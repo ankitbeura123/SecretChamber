@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Broadcast Chat - Library Theme</title>
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;700&family=Cormorant+Garamond:wght@700&display=swap" rel="stylesheet">
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: 'Cormorant Garamond', serif;
+      /* Using online background image */
+      background: url('https://i.pinimg.com/736x/38/4c/8f/384c8ff5a8101ef7035cf8867ec3c466.jpg') center center / cover no-repeat, #1a2230;
+      color: #efe6d4;
+      min-height: 100vh;
+    }
+    .wrap {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      position: relative;
+    }
+    .card {
+      width: 100%;
+      max-width: 650px;
+      background: rgba(28,32,44,0.92);
+      border-radius: 0;
+      border: 3px solid #ad9250;
+      box-shadow: 0 0 40px 5px #221e16, 0 2px 4px #3b2b22;
+      padding: 45px 35px 35px 35px;
+      position: relative;
+      min-height: 530px;
+      z-index: 1;
+    }
+    .card:before {
+      content: "";
+      position: absolute;
+      top: -22px; left: -22px; right: -22px; bottom: -22px;
+      border: 7px solid #7c6238;
+      pointer-events: none;
+      box-shadow: 0 0 60px 0 #312923 inset;
+      z-index: 0;
+      border-radius: 0;
+      opacity: 0.85;
+    }
+    .status-bar {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #ead6aa;
+      font-size: 15px;
+      background: transparent;
+      font-family: 'Cormorant Garamond', serif;
+      margin-bottom: 12px;
+      text-shadow: 0 1px 2px #2a2320;
+    }
+    .status-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 8px;
+      background: #e48759;
+      box-shadow: 0 0 4px #ad9250, 0 1px 1px #322813;
+      transition: background 0.5s;
+    }
+    .chat-container {
+      height: 340px;
+      overflow-y: auto;
+      background: rgba(42,35,26,0.77);
+      border: 2px solid #dec994;
+      border-radius: 0;
+      padding: 15px 13px;
+      font-family: 'EB Garamond', serif;
+      font-size: 18px;
+      color: #f6ebdb;
+      box-shadow: 0 0 10px 2px #675038 inset;
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 9px;
+      margin-bottom: 12px;
+      position: relative;
+      z-index: 2;
+    }
+    .message {
+      border-left: 3px solid #ad9250;
+      padding-left: 12px;
+      margin-bottom: 5px;
+      background: rgba(124,98,56,0.08);
+      font-family: 'EB Garamond', serif;
+      line-height: 1.7;
+      word-break: break-word;
+    }
+    .message b { color: #ffe291; }
+    .system-msg { color: #b59453; font-style: italic; }
+    .input-group {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      margin-top: 0;
+      z-index: 2;
+      position: relative;
+    }
+    .input-group textarea {
+      flex-grow: 1;
+      min-height: 55px;
+      max-height: 140px;
+      resize: vertical;
+      padding: 18px;
+      border-radius: 0;
+      border: 2px solid #baaf90;
+      background: rgba(213,195,130,0.10);
+      color: #fceccb;
+      font-family: 'EB Garamond', serif;
+      font-size: 17px;
+      box-shadow: 0 2px 6px #422f18 inset;
+      margin-bottom: 0;
+      outline: none;
+      transition: border 0.3s;
+    }
+    .input-group textarea:focus { border: 2px solid #ad9250; }
+    .input-group button {
+      height: 55px;
+      padding: 0 26px;
+      border-radius: 0;
+      border: none;
+      background: linear-gradient(92deg,#ad9250,#7c6238 80%);
+      color: #fff8e3;
+      font-weight: 600;
+      cursor: pointer;
+      flex-shrink: 0;
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 16px;
+      letter-spacing: 1.2px;
+      box-shadow: 0 1px 5px #876a31;
+      transition: background 0.3s, color 0.2s;
+    }
+    .input-group button:hover { filter: brightness(1.1); }
+    .download-btn {
+      margin-top: 4px;
+      align-self: flex-end;
+      background: #83621a;
+      color: #fffde9;
+      font-family: 'Cormorant Garamond', serif;
+      border: none;
+      padding: 8px 15px;
+      box-shadow: 0 1px 5px #735f42;
+      border-radius: 4px;
+      font-size: 15px;
+    }
+    .char-count {
+      text-align: right;
+      font-size: 13px;
+      color: #d2b87a;
+      margin-top: 4px;
+      font-family: 'Cormorant Garamond', serif;
+      z-index: 2;
+      position: relative;
+    }
+    .modal {
+      display: block;
+      position: fixed;
+      z-index: 100;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(34,26,0,0.77);
+      padding-top: 60px;
+      font-family: 'Cormorant Garamond', serif;
+    }
+    .modal-content {
+      background: rgba(44,33,20,0.96);
+      margin: 5% auto;
+      padding: 32px 22px;
+      border: 2px solid #a39267;
+      width: 90%;
+      max-width: 420px;
+      box-shadow: 0 0 30px 5px #3b2c11, 0 2px 2px #bfa161;
+      border-radius: 7px;
+      display: flex;
+      flex-direction: column;
+      gap: 17px;
+      color: #ebdabb;
+      font-size: 21px;
+      z-index: 101;
+      position: relative;
+    }
+    .modal-content input, .modal-content select {
+      padding: 12px;
+      border-radius: 4px;
+      border: 1px solid #dec386;
+      background: #392c1a;
+      color: #f9e5bc;
+      font-family: 'EB Garamond', serif;
+      font-size: 17px;
+      margin-bottom: 3px;
+    }
+    .modal-content button {
+      background: linear-gradient(90deg,#ad9250,#8b6d2e);
+      color: #fffbe2;
+      padding: 12px 18px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    .modal-content button:hover { filter: brightness(1.12); }
+    #waitingMsg {
+      color: #ffbb41;
+      font-size:15px;
+      min-height:22px;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+<div id="joinModal" class="modal">
+  <div class="modal-content">
+    <h2>Join the Secret Chamber</h2>
+    <input type="text" id="usernameField" placeholder="Enter your username" maxlength="49">
+    <select id="roleSelect">
+      <option value="reader">Reader (Can only view messages)</option>
+      <option value="writer">Writer (Can send messages)</option>
+    </select>
+    <div id="waitingMsg"></div>
+    <button id="joinBtn" disabled>Join</button>
+  </div>
+</div>
+<div class="wrap">
+  <div class="card">
+    <div class="status-bar">
+      <div>
+        <span id="statusDot" class="status-dot"></span>
+        <span id="statusText">Disconnected</span>
+      </div>
+      <div id="countsDiv">Readers: 0 | Writers: 0</div>
+    </div>
+    <div id="chat" class="chat-container"></div>
+    <div class="input-group">
+      <textarea id="input" placeholder="Type message..." maxlength="500" disabled></textarea>
+      <button id="sendBtn" disabled>Send</button>
+    </div>
+    <button id="downloadBtn" class="download-btn">Download Chat</button>
+    <div class="char-count">Characters: <span id="len">0</span> / 500</div>
+  </div>
+</div>
+<script>
+const chat = document.getElementById('chat');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('sendBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+const len = document.getElementById('len');
+const countsDiv = document.getElementById('countsDiv');
+const joinModal = document.getElementById('joinModal');
+const usernameField = document.getElementById('usernameField');
+const roleSelect = document.getElementById('roleSelect');
+const joinBtn = document.getElementById('joinBtn');
+const waitingMsg = document.getElementById('waitingMsg');
+let socket;
+let username = '';
+let role = '';
+const serverUrl = 'ws://localhost:8080/chat-protocol';
+let messageLog = [];
+let currentRoomStatus = { readers: 0, writers: 0, hasWriter: false };
+function formatTimestamp() {
+  const now = new Date();
+  return now.toLocaleTimeString();
+}
+
+function appendMessage(msg) {
+  // Store original message in log for download (includes timestamp)
+  messageLog.push(msg);
+
+  // Remove timestamp for display (e.g., anything in parentheses at the end)
+  let dispMsg = msg.replace(/\s*\([^)]+\)\s*$/, '');
+
+  const messageDiv = document.createElement('div');
+  messageDiv.className = msg.startsWith('System:') ? 'message system-msg' : 'message';
+  const parts = dispMsg.split(':');
+  if (parts.length > 1 && !dispMsg.startsWith('System:')) {
+    messageDiv.innerHTML = `<b>${parts[0].trim()}</b>: ${parts.slice(1).join(':').trim()}`;
+  } else {
+    messageDiv.textContent = dispMsg;
+  }
+  chat.prepend(messageDiv);
+}
+
+
+function updateEntryState() {
+  const r = roleSelect.value;
+  let message = '';
+  let joinable = !!usernameField.value.trim();
+  if (currentRoomStatus.hasWriter) {
+    if (r === 'writer') {
+      message = "A writer is inside, please wait.";
+      joinable = false;
+    } else {
+      message = "A writer is inside, you cannot join as reader now.";
+      joinable = false;
+    }
+  } else if (currentRoomStatus.readers > 0) {
+    if (r === 'writer') {
+      message = "Readers are currently inside, you cannot join as writer.";
+      joinable = false;
+    }
+  }
+  waitingMsg.textContent = message;
+  joinBtn.disabled = !joinable;
+}
+roleSelect.onchange = updateEntryState;
+usernameField.oninput = updateEntryState;
+function updateRoomStatus(readers, writers) {
+  currentRoomStatus.readers = readers;
+  currentRoomStatus.writers = writers;
+  currentRoomStatus.hasWriter = writers > 0;
+  updateEntryState();
+}
+function connect() {
+  socket = new WebSocket(serverUrl);
+  socket.onopen = () => {
+    statusText.textContent = 'Connected';
+    statusDot.style.background = '#00c853';
+    updateInputState();
+    socket.send('username:' + username.trim());
+    socket.send('role:' + role.trim());
+    appendMessage(`System: Connected as ${username} (${role})`);
+  };
+  socket.onmessage = e => {
+    if (
+      e.data.startsWith("SYSTEM_COUNTS:") ||
+      e.data.startsWith("ROLE_CONFIRMED:") ||
+      e.data.startsWith("ROLE_DENIED:")
+    ) {
+      if (e.data.startsWith("SYSTEM_COUNTS:")) {
+        const parts = e.data.split(':');
+        if (parts.length === 3) {
+          updateRoomStatus(+parts[1], +parts[2]);
+          countsDiv.textContent = `Readers: ${parts[1]} | Writers: ${parts[2]}`;
+        }
+      } else if (e.data.startsWith("ROLE_CONFIRMED:writer") || e.data.startsWith("ROLE_CONFIRMED:reader")) {
+        role = e.data.includes("writer") ? "writer" : "reader";
+        updateInputState();
+        joinModal.style.display = 'none';
+      } else if (e.data.startsWith("ROLE_DENIED:")) {
+        waitingMsg.textContent = e.data.substring(12);
+        joinBtn.disabled = true;
+        joinModal.style.display = 'block';
+      }
+    }
+    else if (e.data.includes("\n")) {
+      chat.innerHTML = "";
+      messageLog = [];
+      let lines = e.data.trim().split('\n');
+      lines.forEach(line => {
+        if (line.trim().length) appendMessage(line);
+      });
+    } else {
+      let incomingMessage = e.data.trim();
+      let incomingContent = incomingMessage.replace(/\[.?\]\s/g, "");
+      let isDuplicate = false;
+      for (let i = messageLog.length - 1; i >= Math.max(0, messageLog.length - 5); i--) {
+        let loggedContent = messageLog[i].replace(/\[.?\]\s/g, "").trim();
+        if (incomingContent === loggedContent) {
+          isDuplicate = true;
+          break;
+        }
+      }
+      if (!isDuplicate) {
+        appendMessage(incomingMessage);
+      }
+    }
+  };
+  socket.onclose = () => {
+    statusText.textContent = 'Disconnected';
+    statusDot.style.background = '#e48759';
+    input.disabled = true;
+    sendBtn.disabled = true;
+    appendMessage('System: Disconnected from server.');
+    joinModal.style.display = 'block';
+  };
+  socket.onerror = () => appendMessage('System: WebSocket error.');
+}
+function updateInputState() {
+  if (role.toLowerCase() === 'writer' && socket && socket.readyState === WebSocket.OPEN) {
+    input.disabled = false;
+    sendBtn.disabled = false;
+  } else {
+    input.disabled = true;
+    sendBtn.disabled = true;
+  }
+}
+joinBtn.onclick = () => {
+  username = usernameField.value.trim();
+  role = roleSelect.value.trim();
+  if (!username) {
+    alert('Please enter username.');
+    return;
+  }
+  connect();
+  joinModal.style.display = 'none';
+};
+sendBtn.onclick = () => {
+  const msg = input.value.trim();
+  if (msg && socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(msg);
+    input.value = '';
+    len.textContent = '0';
+  }
+};
+input.addEventListener('input', () => {
+  len.textContent = input.value.length;
+});
+downloadBtn.onclick = () => {
+  const blob = new Blob([messageLog.join('\n')], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'chat_history.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+updateEntryState();
+</script>
+</body>
+</html>
