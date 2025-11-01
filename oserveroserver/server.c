@@ -373,14 +373,10 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
                     send_to_client(c, err);
                 } else {
                     char out[MAX_MSG_LEN];
-                    // Generate timestamp string
-                    time_t now = time(NULL);
-                    struct tm *tm_info = localtime(&now);
-                    char timestr[32];
-                    strftime(timestr, sizeof(timestr), "%Y-%m-%d %H:%M:%S", tm_info);
 
-                    // Include timestamp in broadcast message!
-                    snprintf(out, sizeof(out), "%s: %s (%s)", c->username[0] ? c->username : "Anon", msg, timestr);
+                    // ✅ Removed timestamp here
+                    snprintf(out, sizeof(out), "%s: %s",
+                             c->username[0] ? c->username : "Anon", msg);
 
                     pthread_rwlock_wrlock(&history_lock);
                     if (db_insert_message(c->username, msg) != 0) {
@@ -408,10 +404,12 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
             }
             break;
         }
-        default: break;
+        default:
+            break;
     }
     return 0;
 }
+
 
 
 
