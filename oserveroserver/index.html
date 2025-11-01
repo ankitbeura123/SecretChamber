@@ -88,16 +88,21 @@
       z-index: 2;
     }
     .message {
-      border-left: 3px solid #ad9250;
-      padding-left: 12px;
-      margin-bottom: 5px;
-      background: rgba(124,98,56,0.08);
-      font-family: 'EB Garamond', serif;
-      line-height: 1.7;
-      word-break: break-word;
+      border-left: 4px solid #b99b56;
+      background: rgba(34, 32, 24, 0.2);
+      padding: 8px 12px;
+      margin: 10px 0;
+      border-radius: 4px;
     }
     .message b { color: #ffe291; }
-    .system-msg { color: #b59453; font-style: italic; }
+    .system-msg {
+      background: transparent;
+      border: none;
+      font-style: italic;
+      color: #b99b56;
+      margin: 8px 0;
+      padding-left: 16px;
+    }
     .input-group {
       display: flex;
       gap: 10px;
@@ -279,20 +284,30 @@ function formatTimestamp() {
 }
 
 function appendMessage(msg) {
-  // Store original message in log for download (includes timestamp)
-  messageLog.push(msg);
+  const now = new Date();
+  const timestamp = now.toTimeString().slice(0, 8); // "HH:MM:SS"
+  
+  // For logging with full date-time:
+  const fullTimestamp = now.toISOString().replace("T", " ").slice(0, 19);
+  messageLog.push(`[${fullTimestamp}] ${msg}`);
 
-  // Remove timestamp for display (e.g., anything in parentheses at the end)
-  let dispMsg = msg.replace(/\s*\([^)]+\)\s*$/, '');
+  const messageDiv = document.createElement("div");
 
-  const messageDiv = document.createElement('div');
-  messageDiv.className = msg.startsWith('System:') ? 'message system-msg' : 'message';
-  const parts = dispMsg.split(':');
-  if (parts.length > 1 && !dispMsg.startsWith('System:')) {
-    messageDiv.innerHTML = `<b>${parts[0].trim()}</b>: ${parts.slice(1).join(':').trim()}`;
+  if (msg.startsWith("System")) {
+    messageDiv.className = "message system-msg";
+    messageDiv.innerHTML = `<i style="color: #b99b56;">${msg}</i>`;
   } else {
-    messageDiv.textContent = dispMsg;
+    messageDiv.className = "message";
+    // Split "sender: message"
+    const senderSplit = msg.split(":");
+    const sender = senderSplit[0].trim();
+    const messageText = senderSplit.slice(1).join(":").trim();
+    messageDiv.innerHTML =
+      `<span style="color:#f2e2aa;"><b>${sender}</b></span>` +
+      `<span style="color:#b3ab8c; font-size:0.95em;"> [${timestamp}]</span><br>` +
+      `<span style="color: #fff;">${messageText}</span>`;
   }
+
   chat.prepend(messageDiv);
 }
 
