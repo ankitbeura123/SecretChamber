@@ -136,12 +136,12 @@ static int init_db(const char *filename) {
         return -1;
     }
 
-    // ADD THIS: clear the history table so history only persists per run
+    
     rc = sqlite3_exec(db, "DELETE FROM messages;", NULL, NULL, &errmsg);
     if (rc != SQLITE_OK) {
         fprintf(stderr, "Failed to clear table: %s\n", errmsg ? errmsg : "unknown");
         sqlite3_free(errmsg);
-        // it's ok to keep going
+        
     }
 
     const char *insert_sql = "INSERT INTO messages (username, message) VALUES (?, ?);";
@@ -205,7 +205,7 @@ static char *db_get_history_snapshot(int limit) {
     while ((rc = sqlite3_step(select_stmt)) == SQLITE_ROW) {
         const unsigned char *uname = sqlite3_column_text(select_stmt, 0);
         const unsigned char *msg = sqlite3_column_text(select_stmt, 1);
-        // Removed timestamp as requested
+        
         const char *u = uname ? (const char*)uname : "Anonymous";
         const char *m = msg ? (const char*)msg : "";
         size_t needed = strlen(u) + 2 + strlen(m) + 1;
@@ -374,7 +374,7 @@ static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
                 } else {
                     char out[MAX_MSG_LEN];
 
-                    // ✅ Removed timestamp here
+                   
                     snprintf(out, sizeof(out), "%s: %s",
                              c->username[0] ? c->username : "Anon", msg);
 
