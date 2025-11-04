@@ -31,6 +31,7 @@ static sqlite3_stmt *insert_stmt = NULL;
 static sqlite3_stmt *select_stmt = NULL;
 
 static void broadcast_text(const char *message);
+static void send_to_client(struct client *c, const char *msg);
 
 static void add_client(struct lws *wsi) {
     struct client *c = calloc(1, sizeof(struct client));
@@ -136,12 +137,12 @@ static int init_db(const char *filename) {
         return -1;
     }
 
-    
+
     rc = sqlite3_exec(db, "DELETE FROM messages;", NULL, NULL, &errmsg);
     if (rc != SQLITE_OK) {
         fprintf(stderr, "Failed to clear table: %s\n", errmsg ? errmsg : "unknown");
         sqlite3_free(errmsg);
-        
+
     }
 
     const char *insert_sql = "INSERT INTO messages (username, message) VALUES (?, ?);";
@@ -205,7 +206,7 @@ static char *db_get_history_snapshot(int limit) {
     while ((rc = sqlite3_step(select_stmt)) == SQLITE_ROW) {
         const unsigned char *uname = sqlite3_column_text(select_stmt, 0);
         const unsigned char *msg = sqlite3_column_text(select_stmt, 1);
-        
+
         const char *u = uname ? (const char*)uname : "Anonymous";
         const char *m = msg ? (const char*)msg : "";
         size_t needed = strlen(u) + 2 + strlen(m) + 1;
@@ -295,123 +296,135 @@ static int can_admit_as_writer() {
     return active_writers() == 0 && active_readers() == 0;
 }
 
+static void process_username_message(struct client *c, char *msg) {
+    char *uname = msg + 9;
+    while (*uname == ' ' || *uname == '\t') uname++;
+    snprintf(c->username, MAX_NAME_LEN, "%s", uname);
+}
+
+static void process_role_message(struct client *c, char *msg) {
+    char *r = msg + 5;
+    while (*r == ' ' || *r == '\t') r++;
+    if (strcasecmp(r, "WRITER") == 0) {
+        if (can_admit_as_writer()) {
+            snprintf(c->role, MAX_ROLE_LEN, "WRITER");
+            pthread_rwlock_rdlock(&history_lock);
+            char *snap = db_get_history_snapshot(HISTORY_LIMIT);
+            pthread_rwlock_unlock(&history_lock);
+            if (snap) {
+                send_to_client(c, snap);
+                free(snap);
+            }
+            send_to_client(c, "ROLE_CONFIRMED:writer");
+            char sysmsg[200];
+            snprintf(sysmsg, sizeof(sysmsg), "System: %s joined as Writer", c->username);
+            broadcast_text(sysmsg);
+        } else {
+            send_to_client(c, "ROLE_DENIED:A writer or readers are already inside.");
+        }
+    } else {
+        if (can_admit_as_reader()) {
+            snprintf(c->role, MAX_ROLE_LEN, "READER");
+            pthread_rwlock_rdlock(&history_lock);
+            char *snap = db_get_history_snapshot(HISTORY_LIMIT);
+            pthread_rwlock_unlock(&history_lock);
+            if (snap) {
+                send_to_client(c, snap);
+                free(snap);
+            }
+            send_to_client(c, "ROLE_CONFIRMED:reader");
+            char sysmsg[200];
+            snprintf(sysmsg, sizeof(sysmsg), "System: %s joined as Reader", c->username);
+            broadcast_text(sysmsg);
+        } else {
+            send_to_client(c, "ROLE_DENIED:A writer is already inside.");
+        }
+    }
+    broadcast_counts();
+}
+
+static void process_history_request(struct client *c) {
+    pthread_rwlock_rdlock(&history_lock);
+    char *snap = db_get_history_snapshot(HISTORY_LIMIT);
+    pthread_rwlock_unlock(&history_lock);
+    if (snap) {
+        send_to_client(c, snap);
+        free(snap);
+    } else {
+        send_to_client(c, "");
+    }
+}
+
+static void process_chat_message(struct client *c, char *msg) {
+    if (strcasecmp(c->role, "WRITER") != 0) {
+        char err[200];
+        snprintf(err, sizeof(err), "System: You are a READER — you cannot send messages.");
+        send_to_client(c, err);
+    } else {
+        char out[MAX_MSG_LEN];
+        snprintf(out, sizeof(out), "%s: %s",
+                 c->username[0] ? c->username : "Anon", msg);
+        pthread_rwlock_wrlock(&history_lock);
+        if (db_insert_message(c->username, msg) != 0) {
+            fprintf(stderr, "Warning: failed to insert message into DB\n");
+        }
+        pthread_rwlock_unlock(&history_lock);
+        broadcast_text(out);
+    }
+}
+
+static void handle_message(struct lws *wsi, void *in, size_t len) {
+    char *msg = malloc(len + 1);
+    if (!msg) return;
+    memcpy(msg, in, len);
+    msg[len] = '\0';
+    struct client *c = find_client(wsi);
+    if (!c) { free(msg); return; }
+
+    if (strncmp(msg, "username:", 9) == 0) {
+        process_username_message(c, msg);
+    } else if (strncmp(msg, "role:", 5) == 0) {
+        process_role_message(c, msg);
+    } else if (strncmp(msg, "get_history", 11) == 0) {
+        process_history_request(c);
+    } else {
+        process_chat_message(c, msg);
+    }
+    free(msg);
+}
+
+static void handle_disconnection(struct lws *wsi) {
+    struct client *c = find_client(wsi);
+    if (c && strcasecmp(c->role, "WRITER") == 0) {
+        char sysmsg[200];
+        snprintf(sysmsg, sizeof(sysmsg), "System: %s disconnected.", c->username);
+        remove_client(wsi);
+        broadcast_text(sysmsg);
+        broadcast_counts();
+    } else {
+        remove_client(wsi);
+        broadcast_counts();
+    }
+}
+
 static int ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
                        void *user, void *in, size_t len) {
     (void)user;
     switch (reason) {
-        case LWS_CALLBACK_ESTABLISHED: {
+        case LWS_CALLBACK_ESTABLISHED:
             add_client(wsi);
             break;
-        }
-        case LWS_CALLBACK_RECEIVE: {
-            char *msg = malloc(len + 1);
-            if (!msg) break;
-            memcpy(msg, in, len);
-            msg[len] = '\0';
-            struct client *c = find_client(wsi);
-            if (!c) { free(msg); break; }
-
-            if (strncmp(msg, "username:", 9) == 0) {
-                char *uname = msg + 9;
-                while (*uname == ' ' || *uname == '\t') uname++;
-                snprintf(c->username, MAX_NAME_LEN, "%s", uname);
-            } else if (strncmp(msg, "role:", 5) == 0) {
-                char *r = msg + 5;
-                while (*r == ' ' || *r == '\t') r++;
-                if (strcasecmp(r, "WRITER") == 0) {
-                    if (can_admit_as_writer()) {
-                        snprintf(c->role, MAX_ROLE_LEN, "WRITER");
-                        // Send history BEFORE confirming role
-                        pthread_rwlock_rdlock(&history_lock);
-                        char *snap = db_get_history_snapshot(HISTORY_LIMIT);
-                        pthread_rwlock_unlock(&history_lock);
-                        if (snap) {
-                            send_to_client(c, snap);
-                            free(snap);
-                        }
-                        // Confirm role
-                        send_to_client(c, "ROLE_CONFIRMED:writer");
-                        char sysmsg[200];
-                        snprintf(sysmsg, sizeof(sysmsg), "System: %s joined as Writer", c->username);
-                        broadcast_text(sysmsg);
-                    } else {
-                        send_to_client(c, "ROLE_DENIED:A writer or readers are already inside.");
-                    }
-                } else {
-                    if (can_admit_as_reader()) {
-                        snprintf(c->role, MAX_ROLE_LEN, "READER");
-                        pthread_rwlock_rdlock(&history_lock);
-                        char *snap = db_get_history_snapshot(HISTORY_LIMIT);
-                        pthread_rwlock_unlock(&history_lock);
-                        if (snap) {
-                            send_to_client(c, snap);
-                            free(snap);
-                        }
-                        send_to_client(c, "ROLE_CONFIRMED:reader");
-                        char sysmsg[200];
-                        snprintf(sysmsg, sizeof(sysmsg), "System: %s joined as Reader", c->username);
-                        broadcast_text(sysmsg);
-                    } else {
-                        send_to_client(c, "ROLE_DENIED:A writer is already inside.");
-                    }
-                }
-                broadcast_counts();
-            } else if (strncmp(msg, "get_history", 11) == 0) {
-                pthread_rwlock_rdlock(&history_lock);
-                char *snap = db_get_history_snapshot(HISTORY_LIMIT);
-                pthread_rwlock_unlock(&history_lock);
-                if (snap) {
-                    send_to_client(c, snap);
-                    free(snap);
-                } else {
-                    send_to_client(c, "");
-                }
-            } else {
-                if (strcasecmp(c->role, "WRITER") != 0) {
-                    char err[200];
-                    snprintf(err, sizeof(err), "System: You are a READER — you cannot send messages.");
-                    send_to_client(c, err);
-                } else {
-                    char out[MAX_MSG_LEN];
-
-                   
-                    snprintf(out, sizeof(out), "%s: %s",
-                             c->username[0] ? c->username : "Anon", msg);
-
-                    pthread_rwlock_wrlock(&history_lock);
-                    if (db_insert_message(c->username, msg) != 0) {
-                        fprintf(stderr, "Warning: failed to insert message into DB\n");
-                    }
-                    pthread_rwlock_unlock(&history_lock);
-
-                    broadcast_text(out);
-                }
-            }
-            free(msg);
+        case LWS_CALLBACK_RECEIVE:
+            handle_message(wsi, in, len);
             break;
-        }
-        case LWS_CALLBACK_CLOSED: {
-            struct client *c = find_client(wsi);
-            if (c && strcasecmp(c->role, "WRITER") == 0) {
-                char sysmsg[200];
-                snprintf(sysmsg, sizeof(sysmsg), "System: %s disconnected.", c->username);
-                remove_client(wsi);
-                broadcast_text(sysmsg);
-                broadcast_counts();
-            } else {
-                remove_client(wsi);
-                broadcast_counts();
-            }
+        case LWS_CALLBACK_CLOSED:
+            handle_disconnection(wsi);
             break;
-        }
         default:
             break;
     }
     return 0;
 }
-
-
-
 
 static const struct lws_protocols protocols[] = {
     {
